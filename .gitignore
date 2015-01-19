@@ -1,0 +1,5 @@
+*.swp
+problem_id_*
+script.R
+index_cache/
+*.csv

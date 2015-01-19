@@ -1,0 +1,140 @@
+Human Activity Recognition
+==========================
+
+Background
+----------
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now 
+possible to collect a large amount of data about personal activity 
+relatively inexpensively. These type of devices are part of the 
+quantified self movement – a group of enthusiasts who take measurements 
+about themselves regularly to improve their health, to find patterns 
+in their behavior, or because they are tech geeks. One thing that people 
+regularly do is quantify how much of a particular activity they do, 
+but they rarely quantify how well they do it.
+
+this project we will use data from accelerometers on the belt, forearm, 
+arm, and dumbell of 6 participants. They were asked to perform barbell 
+lifts correctly and incorrectly in 5 different ways. More information 
+is available from the website here: [http://groupware.les.inf.puc-rio.br/har](http://groupware.les.inf.puc-rio.br/har)
+(see the section on the Weight Lifting Exercise Dataset). 
+
+Loading and Preprocessing data
+------------------------------
+
+#### Loading the data.
+
+The training data for this project are available here: 
+
+[https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+
+The test data are available here: 
+
+[https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+```{r}
+library(ggplot2)
+library(caret)
+library(randomForest)
+library(reshape2)
+```
+
+```{r load-data,cache=TRUE}
+training <- read.csv('pml-training.csv', na.strings=c('NA', '', '#DIV/0!'))
+testing <- read.csv('pml-testing.csv', na.strings=c('NA', '', '#DIV/0!'))
+```
+
+#### Preprocessing
+
+remove info features (1 to 7 columns) and features which has NA value.
+
+```{r}
+infoList <- 1:7
+naList <- which(apply(training, 2, function(x) sum(is.na(x))) > 0)
+excludeList <- c(infoList, naList)
+training <- training[, -excludeList]
+testing <- testing[, -excludeList]
+```
+
+split the training data to subTrain and subTest for cross-validation.
+
+```{r}
+set.seed(9527)
+inTrain <- createDataPartition(training$classe, p=.7, list=FALSE)
+subTrain <- training[inTrain,]
+subTest <- training[-inTrain,]
+```
+
+look up the features correlation.
+
+```{r}
+correl <- cor(subTrain[,-dim(subTrain)[2]])
+diag(correl) <- 0
+g <- ggplot(melt(correl), aes(x=Var1, y=Var2, fill=value))
+g <- g + labs(title='Correlation')
+g <- g + geom_raster()
+g <- g + scale_fill_gradientn(colours=c('red', 'white', 'blue'))
+g
+```
+
+Fitting and Validation
+----------------------
+
+fit model with randomForest
+
+```{r fit-model,cache=TRUE}
+set.seed(9527)
+fit <- randomForest(classe ~ ., data=subTrain)
+fit
+```
+
+the OOB estimate of  error rate is 0.61%, it's small enough.
+
+cross-validation
+
+```{r}
+confuMatrix <- confusionMatrix(predict(fit, subTest), subTest$classe)
+confuMatrix
+```
+
+the estimate out of sample error is `r round(1 - confuMatrix$overall[1], 4)*100`% ,
+all of class's sensitivity is greater than 99% .
+
+```{r}
+cm <- apply(confuMatrix$table, 1, function(x) x/sum(x))
+names(dimnames(cm))[1] <- 'Actual'
+cm <- melt(cm)
+g <- ggplot(cm, aes(x=Prediction, y=Actual, fill=value))
+g <- g + labs(title='Confusion Matrix')
+g <- g + geom_raster()
+g <- g + scale_fill_gradientn(colours=c('white', 'yellow', 'brown', 'black'))
+g
+```
+
+Conclusions
+-----------
+
+We can recognise a small number of exercise mistakes by the measurement from
+the accelerometers on the belt, forearm, arm, and dumbell.
+
+
+Prediction
+----------
+
+apply the machine learning algorithm to the testing data set.
+
+```{r}
+pred <- predict(fit, testing)
+pred
+```
+
+```{r eval=FALSE}
+pml_write_files = function(x){
+	  n = length(x)
+  for(i in 1:n){
+	      filename = paste0("problem_id_",i,".txt")
+      write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+	    }
+}
+pml_write_files(pred)
+```
